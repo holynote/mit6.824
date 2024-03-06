@@ -1,10 +1,16 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-
+import (
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+	"sort"
+	"strconv"
+	"encoding/json"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -13,6 +19,12 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -32,10 +44,62 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	// Your worker implementation here.
-
+	task := gettask()
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
+	DoMaptask(&task, mapf, reducef)
+}
+func gettask() Job{
+	args := TaskArgs{}
+	rely := Job{}
+	if ok := call("Coordinator.Gettask", &args, &rely); ok{
+		fmt.Printf("successfully get task-%d\n", rely.Job_num)	
+	}else{
+		fmt.Printf("fail to get task\n")
+	}
+	return rely
+}
 
+func DoMaptask(task *Job, mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
+	intermediate := []KeyValue{}
+	for _, filename := range task.Joblist {
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", filename)
+		}
+		file.Close()
+		kva := mapf(filename, string(content))
+		intermediate = append(intermediate, kva...)
+	} //file of task changed to []KV
+
+	sort.Sort(ByKey(intermediate))
+	nreduce := task.Nreduce  //total nums of reduce task
+	reduce_num := make([][]KeyValue, nreduce)
+	for _, v := range intermediate{
+		index := ihash(v.Key) % nreduce
+		reduce_num[index] = append(reduce_num[index], v)
+	} // reduce num correspond to []KY
+
+	//create tmp file for each reduce num
+	for i, _ := range reduce_num{
+		oname := "mr-tmp-" + strconv.Itoa(task.Job_num) + strconv.Itoa(i)
+		ofile, err := os.Create(oname)
+		if err != nil{
+			log.Fatal("create file failed", err)
+		}
+		enc := json.NewEncoder(ofile)
+  		for _, kv := range reduce_num[i] {
+    		err := enc.Encode(&kv)
+			if err != nil{
+				log.Fatal("encode failed", err)
+			}
+		}
+		ofile.Close()
+	}
 }
 
 //

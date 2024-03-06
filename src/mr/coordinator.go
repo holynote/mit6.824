@@ -7,12 +7,6 @@ import "net/rpc"
 import "net/http"
 
 
-type Coordinator struct {
-	// Your definitions here.
-
-}
-
-// Your code here -- RPC handlers for the worker to call.
 
 //
 // an example RPC handler.
@@ -40,7 +34,9 @@ func (c *Coordinator) server() {
 	}
 	go http.Serve(l, nil)
 }
-
+func (c *Coordinator) Gettask(args TaskArgs, rely *Job) {
+	*rely = *<-c.Mapchan
+}
 //
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
@@ -60,11 +56,27 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
-
+	c := Coordinator{
+		Files: files,
+		Nreduce: nReduce,
+		Mapchan: make(chan *Job, len(files)),
+		Redchan: make(chan *Job, nReduce),
+		State: 0,
+	}
 	// Your code here.
-
-
+	c.Make_maptask()
 	c.server()
 	return &c
+}
+func (c *Coordinator) Make_maptask(){
+	for i, f := range c.Files{
+		//one task deal with one file
+		task := Job{
+			Jobtype: "map",
+			Joblist: []string{f},
+			Job_num: i,
+			Nreduce: c.Nreduce,
+		}
+		c.Mapchan <- &task
+	}
 }

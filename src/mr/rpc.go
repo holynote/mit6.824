@@ -17,13 +17,32 @@ import "strconv"
 type ExampleArgs struct {
 	X int
 }
+type TaskArgs struct {
+}
 
 type ExampleReply struct {
 	Y int
 }
 
 // Add your RPC definitions here.
+type Coordinator struct {
+	// Your definitions here.
+	Nreduce int
+	Mapchan chan *Job
+	Redchan chan *Job
+	Files []string
+	State int //state of tasks
+}
 
+// Your code here -- RPC handlers for the worker to call.
+//struct send to worker
+type Jobtype string
+type Job struct{
+	Jobtype Jobtype
+	Joblist []string
+	Job_num int
+	Nreduce int
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
