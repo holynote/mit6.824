@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -9,7 +10,8 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"encoding/json"
+	"time"
+
 )
 
 //
@@ -44,15 +46,32 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	// Your worker implementation here.
-	task := gettask()
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
-	DoMaptask(&task, mapf, reducef)
+	for{
+		task := gettask()
+		switch task.Jobtype{
+			case "map":{
+				DoMaptask(&task, mapf)
+			}
+			case "wait":{
+				fmt.Println("All tasks are in progress, please wait...")
+				time.Sleep(time.Second)
+			}
+			case "reduce":{
+				DoRedtask(&task, reducef)
+			}
+			case "done":{
+				fmt.Println("All tasks are finished")
+				break
+			}
+		}
+	}
 }
 func gettask() Job{
 	args := TaskArgs{}
 	rely := Job{}
-	if ok := call("Coordinator.Gettask", &args, &rely); ok{
+	if ok := call("Coordinator.Calltask", &args, &rely); ok{
 		fmt.Printf("successfully get task-%d\n", rely.Job_num)	
 	}else{
 		fmt.Printf("fail to get task\n")
@@ -60,7 +79,7 @@ func gettask() Job{
 	return rely
 }
 
-func DoMaptask(task *Job, mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
+func DoMaptask(task *Job, mapf func(string, string) []KeyValue) {
 	intermediate := []KeyValue{}
 	for _, filename := range task.Joblist {
 		file, err := os.Open(filename)
@@ -101,7 +120,46 @@ func DoMaptask(task *Job, mapf func(string, string) []KeyValue, reducef func(str
 		ofile.Close()
 	}
 }
+func DoRedtask(task *Job, reducef func(string, []string) string){
+	kva := []KeyValue{}
+	for _, f := range task.Joblist{
+		file, err := os.Open(f)
+		if err != nil{
+			log.Fatalf("fail to open file %v", file)
+		}
+		dec := json.NewDecoder(file)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+			  break
+			}
+			kva = append(kva, kv)
+		}
+		file.Close()
+	}
+	sort.Sort(ByKey(kva))
+	intermediate := kva
+	ofile_name := "mr-out-" + strconv.Itoa(task.Job_num)
+	ofile, _ := os.Create(ofile_name)
+	i := 0
+	for i < len(intermediate) {
+		j := i + 1
+		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediate[k].Value)
+		}
+		output := reducef(intermediate[i].Key, values)
 
+		// this is the correct format for each line of Reduce output.
+		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
+		i = j
+	}
+	ofile.Close()
+}
 //
 // example function to show how to make an RPC call to the coordinator.
 //

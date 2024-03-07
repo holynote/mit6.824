@@ -17,7 +17,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
-
+func (c *Coordinator) Calltask(args *TaskArgs, rely *Job) error {
+	*rely = *<-c.Mapchan
+	return nil
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -34,9 +37,7 @@ func (c *Coordinator) server() {
 	}
 	go http.Serve(l, nil)
 }
-func (c *Coordinator) Gettask(args TaskArgs, rely *Job) {
-	*rely = *<-c.Mapchan
-}
+
 //
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
@@ -64,9 +65,12 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		State: 0,
 	}
 	// Your code here.
-	c.Make_maptask()
+	c.Make_task()
 	c.server()
 	return &c
+}
+func (c *Coordinator) Make_task(){
+	if 
 }
 func (c *Coordinator) Make_maptask(){
 	for i, f := range c.Files{
